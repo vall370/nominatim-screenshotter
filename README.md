@@ -22,7 +22,7 @@ This service allows you to obtain screenshots of OpenStreetMap based on either c
 1. Clone this repository or download the source code:
 
 ```bash
-git clone https://github.com/yourusername/nominatim-screenshotter.git
+git clone https://github.com/vall370/nominatim-screenshotter.git
 cd nominatim-screenshotter
 ```
 
