@@ -1,0 +1,33 @@
+{
+  "name": "map-screenshot-service",
+  "version": "1.0.0",
+  "description": "A service that takes OpenStreetMap screenshots based on coordinates or location queries",
+  "main": "map-screenshot-service.js",
+  "scripts": {
+    "start": "node map-screenshot-service.js",
+    "dev": "nodemon map-screenshot-service.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint .",
+    "prestart": "node -e \"console.log('Starting OpenStreetMap Screenshot Service...')\""
+  },
+  "keywords": [
+    "openstreetmap",
+    "nominatim",
+    "screenshot",
+    "maps",
+    "geolocation",
+    "coolify"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "puppeteer": "^21.5.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
