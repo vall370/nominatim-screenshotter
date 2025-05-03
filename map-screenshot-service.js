@@ -4,7 +4,6 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
-const fetch = require('node-fetch');
 const { createClient } = require('@supabase/supabase-js');
 const cuid = require('cuid'); // Correct import for cuid
 const app = express();
