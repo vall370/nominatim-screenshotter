@@ -5,9 +5,9 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3119:3119"
     environment:
-      - PORT=3000
+      - PORT=3119
     restart: unless-stopped
     volumes:
       - ./public:/app/public
@@ -17,5 +17,5 @@ services:
       context: ./leaflet-map-viewer
       dockerfile: Dockerfile
     ports:
-      - "8080:80"
+      - "3118:3118"
     restart: unless-stopped
