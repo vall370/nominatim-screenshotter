@@ -1,9 +1,12 @@
+require('dotenv').config(); // Load environment variables from .env file
 // map-screenshot-service.js
 const express = require('express');
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');
+const { createClient } = require('@supabase/supabase-js');
+const cuid = require('cuid'); // Correct import for cuid
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -35,6 +38,26 @@ app.use(express.static('public'));
 const publicDir = path.join(__dirname, 'public');
 if (!fs.existsSync(publicDir)) {
     fs.mkdirSync(publicDir);
+}
+
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+    console.error('Error: SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables are required.');
+    // Optionally exit or disable Supabase functionality
+    // process.exit(1);
+}
+
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+const supabaseBucket = 'map-screenshots';
+
+// Log if Supabase is configured
+if (supabase) {
+    console.log(`Supabase client initialized. Uploading to bucket: ${supabaseBucket}`);
+} else {
+    console.warn('Supabase client not initialized due to missing environment variables. Upload functionality disabled.');
 }
 
 // Implement rate limiting if enabled
@@ -321,7 +344,7 @@ app.get('/map-screenshot', async (req, res) => {
         await page.setViewport({ width: parseInt(width), height: parseInt(height) });
 
         // Navigate to OpenStreetMap with the provided coordinates
-        const mapUrl = `http://leaflet-map-viewer:80/?zoom=${zoom}&lat=${lat}&lon=${lon}`;
+        const mapUrl = `http://leaflet-map-viewer:3118/?zoom=${zoom}&lat=${lat}&lon=${lon}`;
         console.log("Navigating to:", mapUrl); // Log the URL for debugging
         await page.goto(mapUrl, { waitUntil: 'networkidle0' }); // Wait until network settles
 
@@ -335,9 +358,43 @@ app.get('/map-screenshot', async (req, res) => {
         // Close browser
         await browser.close();
 
-        // Send screenshot as response
-        res.set('Content-Type', 'image/png');
-        res.send(screenshot);
+        // Check if Supabase is configured before attempting upload
+        if (!supabase) {
+            console.error('Supabase client not available. Cannot upload screenshot.');
+            // Fallback: Send the image directly (or handle error differently)
+            res.set('Content-Type', 'image/png');
+            return res.send(screenshot);
+        }
+
+        // Generate a unique filename using cuid
+        const fileName = `${cuid()}.png`;
+        const filePath = `public/${fileName}`; // Define path within the bucket
+
+        // Upload to Supabase Storage
+        const { data, error: uploadError } = await supabase.storage
+            .from(supabaseBucket)
+            .upload(filePath, screenshot, {
+                contentType: 'image/png',
+                upsert: true, // Overwrite if file exists (optional)
+            });
+
+        if (uploadError) {
+            console.error('Supabase upload error:', uploadError);
+            throw new Error(`Failed to upload screenshot to Supabase: ${uploadError.message}`);
+        }
+
+        // Get the public URL for the uploaded file
+        const { data: urlData } = supabase.storage.from(supabaseBucket).getPublicUrl(filePath);
+
+        if (!urlData || !urlData.publicUrl) {
+            console.error('Could not get public URL from Supabase.');
+            throw new Error('Screenshot uploaded, but failed to retrieve public URL.');
+        }
+
+        console.log('Screenshot uploaded to Supabase:', urlData.publicUrl);
+
+        // Send the public URL as response
+        res.json({ imageUrl: urlData.publicUrl });
 
     } catch (error) {
         console.error('Error capturing map screenshot:', error);
@@ -394,7 +451,7 @@ app.get('/location-screenshot', async (req, res) => {
 
             // Wait for the map container to be ready in the React app
             await page.waitForSelector('.leaflet-container', { visible: true });
-            await page.waitForTimeout(2000); // Additional wait for tiles
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
             // Take screenshot
             const screenshot = await page.screenshot({ type: 'png' });
@@ -403,9 +460,43 @@ app.get('/location-screenshot', async (req, res) => {
             await browser.close();
             browser = null; // Ensure browser is marked as closed
 
-            // Send screenshot as response
-            res.set('Content-Type', 'image/png');
-            res.send(screenshot);
+            // Check if Supabase is configured before attempting upload
+            if (!supabase) {
+                console.error('Supabase client not available. Cannot upload screenshot.');
+                // Fallback: Send the image directly (or handle error differently)
+                res.set('Content-Type', 'image/png');
+                return res.send(screenshot);
+            }
+
+            // Generate a unique filename using cuid
+            const fileName = `${cuid()}.png`;
+            const filePath = `public/${fileName}`; // Define path within the bucket
+
+            // Upload to Supabase Storage
+            const { data, error: uploadError } = await supabase.storage
+                .from(supabaseBucket)
+                .upload(filePath, screenshot, {
+                    contentType: 'image/png',
+                    upsert: true, // Overwrite if file exists (optional)
+                });
+
+            if (uploadError) {
+                console.error('Supabase upload error:', uploadError);
+                throw new Error(`Failed to upload screenshot to Supabase: ${uploadError.message}`);
+            }
+
+            // Get the public URL for the uploaded file
+            const { data: urlData } = supabase.storage.from(supabaseBucket).getPublicUrl(filePath);
+
+            if (!urlData || !urlData.publicUrl) {
+                console.error('Could not get public URL from Supabase.');
+                throw new Error('Screenshot uploaded, but failed to retrieve public URL.');
+            }
+
+            console.log('Screenshot uploaded to Supabase:', urlData.publicUrl);
+
+            // Send the public URL as response
+            res.json({ imageUrl: urlData.publicUrl });
 
         } catch (error) {
             console.error('Error capturing location screenshot:', error);

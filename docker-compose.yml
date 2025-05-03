@@ -1,13 +1,11 @@
 version: '3.8'
 services:
   map-screenshot-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     ports:
       - "3119:3119"
-    environment:
-      - PORT=3119
+    env_file:
+      - .env
     restart: unless-stopped
     volumes:
       - ./public:/app/public
