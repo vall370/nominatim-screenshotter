@@ -3,6 +3,7 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
+const fetch = require('node-fetch');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -15,13 +16,13 @@ const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000;
 
 // Configure Puppeteer launch options
 const puppeteerOptions = {
-  headless: 'new',
-  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
 };
 
 // Add additional args if sandbox is disabled
 if (process.env.PUPPETEER_NO_SANDBOX === 'true') {
-  puppeteerOptions.args.push('--no-sandbox', '--disable-setuid-sandbox');
+    puppeteerOptions.args.push('--no-sandbox', '--disable-setuid-sandbox');
 }
 
 // Middleware to parse JSON bodies
@@ -33,45 +34,45 @@ app.use(express.static('public'));
 // Create the public directory if it doesn't exist
 const publicDir = path.join(__dirname, 'public');
 if (!fs.existsSync(publicDir)) {
-  fs.mkdirSync(publicDir);
+    fs.mkdirSync(publicDir);
 }
 
 // Implement rate limiting if enabled
 if (rateLimitRequests > 0) {
-  const requestCounts = {};
-  
-  app.use((req, res, next) => {
-    const ip = req.ip || req.connection.remoteAddress;
-    const now = Date.now();
-    
-    // Initialize or clean up old requests
-    if (!requestCounts[ip]) {
-      requestCounts[ip] = [];
-    }
-    
-    // Remove requests outside the current window
-    requestCounts[ip] = requestCounts[ip].filter(timestamp => now - timestamp < rateLimitWindowMs);
-    
-    // Check if the request limit is reached
-    if (requestCounts[ip].length >= rateLimitRequests) {
-      return res.status(429).json({
-        error: 'Too many requests',
-        message: `Rate limit of ${rateLimitRequests} requests per ${rateLimitWindowMs/1000} seconds exceeded`
-      });
-    }
-    
-    // Add the current request timestamp
-    requestCounts[ip].push(now);
-    next();
-  });
-  
-  console.log(`Rate limiting enabled: ${rateLimitRequests} requests per ${rateLimitWindowMs/1000} seconds`);
+    const requestCounts = {};
+
+    app.use((req, res, next) => {
+        const ip = req.ip || req.connection.remoteAddress;
+        const now = Date.now();
+
+        // Initialize or clean up old requests
+        if (!requestCounts[ip]) {
+            requestCounts[ip] = [];
+        }
+
+        // Remove requests outside the current window
+        requestCounts[ip] = requestCounts[ip].filter(timestamp => now - timestamp < rateLimitWindowMs);
+
+        // Check if the request limit is reached
+        if (requestCounts[ip].length >= rateLimitRequests) {
+            return res.status(429).json({
+                error: 'Too many requests',
+                message: `Rate limit of ${rateLimitRequests} requests per ${rateLimitWindowMs / 1000} seconds exceeded`
+            });
+        }
+
+        // Add the current request timestamp
+        requestCounts[ip].push(now);
+        next();
+    });
+
+    console.log(`Rate limiting enabled: ${rateLimitRequests} requests per ${rateLimitWindowMs / 1000} seconds`);
 }
 
 // Create the client HTML file in the public directory
 const clientHtmlPath = path.join(publicDir, 'index.html');
 if (!fs.existsSync(clientHtmlPath)) {
-  fs.writeFileSync(clientHtmlPath, `<!DOCTYPE html>
+    fs.writeFileSync(clientHtmlPath, `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -270,7 +271,8 @@ if (!fs.existsSync(clientHtmlPath)) {
             fetch(url)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Network response was not ok');
+                        // Try to parse error response from backend
+                        return response.json().then(err => { throw new Error(err.message || 'Network response was not ok'); });
                     }
                     return response.blob();
                 })
@@ -278,7 +280,7 @@ if (!fs.existsSync(clientHtmlPath)) {
                     document.getElementById('loading').style.display = 'none';
                     const imageUrl = URL.createObjectURL(blob);
                     document.getElementById('result').innerHTML = \`
-                        <h3>Location Screenshot</h3>
+                        <h3>Map Screenshot for Location</h3>
                         <p>Query: "\${query}" (Zoom: \${zoom})</p>
                         <img src="\${imageUrl}" alt="Location Screenshot">
                     \`;
@@ -298,108 +300,144 @@ if (!fs.existsSync(clientHtmlPath)) {
 
 // Route to handle map screenshot requests
 app.get('/map-screenshot', async (req, res) => {
-  try {
-    // Get latitude and longitude from query parameters
-    const { lat, lon, zoom = 15 } = req.query;
-    
-    // Validate parameters
-    if (!lat || !lon) {
-      return res.status(400).json({ error: 'Latitude and longitude parameters are required' });
+    try {
+        // Get latitude and longitude from query parameters
+        const { lat, lon, zoom = 15, width = 1200, height = 800 } = req.query;
+
+        // Validate parameters
+        if (!lat || !lon) {
+            return res.status(400).json({ error: 'Latitude and longitude parameters are required' });
+        }
+
+        // Launch puppeteer
+        const browser = await puppeteer.launch(puppeteerOptions);
+
+        const page = await browser.newPage();
+
+        // Set request timeout
+        await page.setDefaultNavigationTimeout(requestTimeout);
+
+        // Set viewport size for the screenshot
+        await page.setViewport({ width: parseInt(width), height: parseInt(height) });
+
+        // Navigate to OpenStreetMap with the provided coordinates
+        const mapUrl = `http://leaflet-map-viewer:80/?zoom=${zoom}&lat=${lat}&lon=${lon}`;
+        console.log("Navigating to:", mapUrl); // Log the URL for debugging
+        await page.goto(mapUrl, { waitUntil: 'networkidle0' }); // Wait until network settles
+
+        // Wait for the map container to be ready
+        await page.waitForSelector('.leaflet-container', { visible: true });
+        await page.waitForTimeout(2000); // Additional wait for map tiles to load
+
+        // Take screenshot
+        const screenshot = await page.screenshot({ type: 'png' });
+
+        // Close browser
+        await browser.close();
+
+        // Send screenshot as response
+        res.set('Content-Type', 'image/png');
+        res.send(screenshot);
+
+    } catch (error) {
+        console.error('Error capturing map screenshot:', error);
+        res.status(500).json({ error: 'Failed to capture map screenshot', details: error.message });
     }
-    
-    // Launch puppeteer
-    const browser = await puppeteer.launch(puppeteerOptions);
-    
-    const page = await browser.newPage();
-    
-    // Set request timeout
-    await page.setDefaultNavigationTimeout(requestTimeout);
-    
-    // Set viewport size for the screenshot
-    await page.setViewport({ width: 1200, height: 800 });
-    
-    // Navigate to OpenStreetMap with the provided coordinates
-    await page.goto(`https://www.openstreetmap.org/#map=${zoom}/${lat}/${lon}`);
-    
-    // Wait for the map to load completely
-    await page.waitForSelector('#map', { visible: true });
-    await page.waitForTimeout(2000); // Additional wait for map tiles to load
-    
-    // Take screenshot
-    const screenshot = await page.screenshot({ type: 'png' });
-    
-    // Close browser
-    await browser.close();
-    
-    // Send screenshot as response
-    res.set('Content-Type', 'image/png');
-    res.send(screenshot);
-    
-  } catch (error) {
-    console.error('Error capturing map screenshot:', error);
-    res.status(500).json({ error: 'Failed to capture map screenshot', details: error.message });
-  }
 });
 
 // Route to accept location query string instead of coordinates
 app.get('/location-screenshot', async (req, res) => {
-  try {
-    // Get location query from parameters
-    const { query, zoom = 15 } = req.query;
-    
-    // Validate parameters
-    if (!query) {
-      return res.status(400).json({ error: 'Location query parameter is required' });
+    try {
+        // Get location query from parameters
+        const { query, zoom = 15, width = 1200, height = 800 } = req.query;
+
+        // Validate parameters
+        if (!query) {
+            return res.status(400).json({ error: 'Location query parameter is required' });
+        }
+
+        let browser;
+        try {
+            // First, use Nominatim API to convert the query to coordinates
+            const encodedQuery = encodeURIComponent(query);
+            const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodedQuery}&format=json&limit=1`;
+            console.log("Querying Nominatim:", nominatimUrl); // Log Nominatim request
+            const nominatimRes = await fetch(nominatimUrl, {
+                headers: { 'User-Agent': 'MapScreenshotService/1.0' } // Nominatim requires a User-Agent
+            });
+            if (!nominatimRes.ok) {
+                throw new Error(`Nominatim API request failed with status: ${nominatimRes.status}`);
+            }
+            const locations = await nominatimRes.json();
+
+            if (!locations || locations.length === 0) {
+                return res.status(404).json({ error: 'Location not found', message: `Could not find coordinates for query: "${query}"` });
+            }
+
+            const { lat, lon } = locations[0];
+            console.log(`Found coordinates for "${query}": lat=${lat}, lon=${lon}`);
+
+            // Now launch puppeteer to screenshot the internal viewer
+            browser = await puppeteer.launch(puppeteerOptions);
+            const page = await browser.newPage();
+
+            // Set request timeout
+            await page.setDefaultNavigationTimeout(requestTimeout);
+
+            // Set viewport size for the screenshot
+            await page.setViewport({ width: parseInt(width), height: parseInt(height) });
+
+            // Navigate to the internal leaflet viewer with found coordinates
+            const mapUrl = `http://leaflet-map-viewer:80/?lat=${lat}&lon=${lon}&zoom=${zoom}`;
+            console.log("Navigating to:", mapUrl); // Log the URL for debugging
+            await page.goto(mapUrl, { waitUntil: 'networkidle0' }); // Wait until network settles
+
+            // Wait for the map container to be ready in the React app
+            await page.waitForSelector('.leaflet-container', { visible: true });
+            await page.waitForTimeout(2000); // Additional wait for tiles
+
+            // Take screenshot
+            const screenshot = await page.screenshot({ type: 'png' });
+
+            // Close browser
+            await browser.close();
+            browser = null; // Ensure browser is marked as closed
+
+            // Send screenshot as response
+            res.set('Content-Type', 'image/png');
+            res.send(screenshot);
+
+        } catch (error) {
+            console.error('Error capturing location screenshot:', error);
+            if (browser) {
+                try {
+                    await browser.close(); // Attempt to close browser on error
+                } catch (closeError) {
+                    console.error('Error closing browser after failure:', closeError);
+                }
+            }
+            // Ensure response is sent within the catch block
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Failed to capture location screenshot', message: error.message });
+            }
+        }
+    } catch (error) {
+        console.error('Error capturing location screenshot:', error);
+        res.status(500).json({ error: 'Failed to capture location screenshot', message: error.message });
     }
-    
-    // First, use Nominatim API to convert the query to coordinates
-    const browser = await puppeteer.launch(puppeteerOptions);
-    
-    const page = await browser.newPage();
-    
-    // Set request timeout
-    await page.setDefaultNavigationTimeout(requestTimeout);
-    
-    // Set viewport size for the screenshot
-    await page.setViewport({ width: 1200, height: 800 });
-    
-    // Encode the query properly for the URL
-    const encodedQuery = encodeURIComponent(query);
-    
-    // Navigate to OpenStreetMap search page
-    await page.goto(`https://nominatim.openstreetmap.org/ui/search.html?q=${encodedQuery}`);
-    
-    // Wait for the search results to load
-    await page.waitForSelector('.leaflet-container', { visible: true });
-    await page.waitForTimeout(2000); // Additional wait for map tiles to load
-    
-    // Take screenshot
-    const screenshot = await page.screenshot({ type: 'png' });
-    
-    // Close browser
-    await browser.close();
-    
-    // Send screenshot as response
-    res.set('Content-Type', 'image/png');
-    res.send(screenshot);
-    
-  } catch (error) {
-    console.error('Error capturing location screenshot:', error);
-    res.status(500).json({ error: 'Failed to capture location screenshot', details: error.message });
-  }
 });
 
 // Add health check endpoint for monitoring
 app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    service: 'map-screenshot-service',
-    uptime: process.uptime()
-  });
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        service: 'map-screenshot-service',
+        uptime: process.uptime()
+    });
 });
 
 // Start the server
 app.listen(port, () => {
-  console.log(`Map screenshot service running on port ${port}`);
+    console.log(`Map screenshot service running on port ${port}`);
 });

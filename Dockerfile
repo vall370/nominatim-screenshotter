@@ -1,54 +1,68 @@
-# Use Node.js as the base image
-FROM node:18-slim
+# Puppeteer recommends using the Node LTS version, but you can choose what fits your needs
+FROM node:lts-slim
 
-# Set working directory
+# Create app directory
 WORKDIR /app
 
-# Install dependencies for Puppeteer
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libgdk-pixbuf2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    xdg-utils \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Puppeteer globally without Chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-RUN npm install puppeteer --global
-
-# Copy package files
+# Install app dependencies
+# Copies package.json and package-lock.json to Docker environment
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install puppeteer, don't install Chromium as it will be installed manually later
+# Also install node-fetch v2 for CommonJS compatibility
+RUN npm install puppeteer --no-install-recommends && npm install node-fetch@2
 
-# Copy the application files
+# Copy app source to Docker environment
 COPY . .
 
-# Create public directory
-RUN mkdir -p public
+# You can expose any port your app is configured to use, like 8080 for example
+EXPOSE 3000
 
-# Add healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3000}/health || exit 1
+# Installing Chromium dependencies
+RUN apt-get update && apt-get install -y \
+  ca-certificates \
+  fontconfig \
+  gconf-service \
+  libappindicator1 \
+  libasound2 \
+  libatk1.0-0 \
+  libc6 \
+  libcups2 \
+  libdbus-1-3 \
+  libexpat1 \
+  libfontconfig1 \
+  libgcc1 \
+  libgconf-2-4 \
+  libgbm-dev \
+  libgdk-pixbuf2.0-0 \
+  libglib2.0-0 \
+  libgtk-3-0 \
+  libicu-dev \
+  libjpeg-dev \
+  libnspr4 \
+  libnss3 \
+  libpango-1.0-0 \
+  libpangocairo-1.0-0 \
+  libpng-dev \
+  libstdc++6 \
+  libx11-6 \
+  libx11-xcb1 \
+  libxcb1 \
+  libxcomposite1 \
+  libxcursor1 \
+  libxdamage1 \
+  libxext6 \
+  libxfixes3 \
+  libxi6 \
+  libxrandr2 \
+  libxrender1 \
+  libxss1 \
+  libxtst6 \
+  locales \
+  lsb-release \
+  wget \
+  xdg-utils \
+  && rm -rf /var/lib/apt/lists/*
 
-# Expose the port the app runs on
-EXPOSE ${PORT:-3000}
-
-# Command to run the application
+# Run your application when container launches
 CMD ["node", "map-screenshot-service.js"]

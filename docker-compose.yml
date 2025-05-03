@@ -1,5 +1,4 @@
-version: '3'
-
+version: '3.8'
 services:
   map-screenshot-service:
     build:
@@ -12,3 +11,11 @@ services:
     restart: unless-stopped
     volumes:
       - ./public:/app/public
+
+  leaflet-map-viewer:
+    build:
+      context: ./leaflet-map-viewer
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    restart: unless-stopped
