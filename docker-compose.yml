@@ -2,8 +2,6 @@ version: '3.8'
 services:
   map-screenshot-service:
     build: .
-    env_file:
-      - .env
     restart: unless-stopped
     volumes:
       - ./public:/app/public
