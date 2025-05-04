@@ -3,6 +3,8 @@ services:
   map-screenshot-service:
     build: .
     restart: unless-stopped
+    ports:
+      - "3003:3000"
     volumes:
       - ./public:/app/public
 
