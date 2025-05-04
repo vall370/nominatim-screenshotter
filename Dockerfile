@@ -10,7 +10,7 @@ COPY package*.json ./
 
 # Install puppeteer, don't install Chromium as it will be installed manually later
 # Also install node-fetch v2 for CommonJS compatibility
-RUN npm install puppeteer --no-install-recommends && npm install node-fetch@2
+RUN npm install puppeteer --no-install-recommends
 
 # Copy app source to Docker environment
 COPY . .
