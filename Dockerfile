@@ -20,6 +20,7 @@ EXPOSE 3000
 
 # Installing Chromium dependencies
 RUN apt-get update && apt-get install -y \
+  chromium \
   ca-certificates \
   fontconfig \
   gconf-service \
