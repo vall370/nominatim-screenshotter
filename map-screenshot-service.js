@@ -444,7 +444,7 @@ app.get('/location-screenshot', async (req, res) => {
             await page.setViewport({ width: parseInt(width), height: parseInt(height) });
 
             // Navigate to the internal leaflet viewer with found coordinates
-            const mapUrl = `http://leaflet-map-viewer:80/?lat=${lat}&lon=${lon}&zoom=${zoom}`;
+            const mapUrl = `http://leaflet-map-viewer:3118/?lat=${lat}&lon=${lon}&zoom=${zoom}`;
             console.log("Navigating to:", mapUrl); // Log the URL for debugging
             await page.goto(mapUrl, { waitUntil: 'networkidle0' }); // Wait until network settles
 
