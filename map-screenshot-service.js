@@ -249,17 +249,20 @@ if (!fs.existsSync(clientHtmlPath)) {
             fetch(url)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Network response was not ok');
+                        // Try to parse error JSON
+                        return response.json().then(err => { throw new Error(err.message || 'Network response was not ok'); });
                     }
-                    return response.blob();
+                    return response.json(); // Expect JSON response
                 })
-                .then(blob => {
+                .then(data => { // data contains { imageUrl: "..." }
                     document.getElementById('loading').style.display = 'none';
-                    const imageUrl = URL.createObjectURL(blob);
+                    if (!data.imageUrl) {
+                        throw new Error('Image URL not found in response');
+                    }
                     document.getElementById('result').innerHTML = \`
                         <h3>Map Screenshot</h3>
                         <p>Coordinates: \${lat}, \${lon} (Zoom: \${zoom})</p>
-                        <img src="\${imageUrl}" alt="Map Screenshot">
+                        <img src="\${data.imageUrl}" alt="Map Screenshot"> 
                     \`;
                 })
                 .catch(error => {
@@ -292,15 +295,17 @@ if (!fs.existsSync(clientHtmlPath)) {
                         // Try to parse error response from backend
                         return response.json().then(err => { throw new Error(err.message || 'Network response was not ok'); });
                     }
-                    return response.blob();
+                    return response.json(); // Expect JSON response
                 })
-                .then(blob => {
+                .then(data => { // data contains { imageUrl: "..." }
                     document.getElementById('loading').style.display = 'none';
-                    const imageUrl = URL.createObjectURL(blob);
+                     if (!data.imageUrl) {
+                        throw new Error('Image URL not found in response');
+                    }
                     document.getElementById('result').innerHTML = \`
                         <h3>Map Screenshot for Location</h3>
                         <p>Query: "\${query}" (Zoom: \${zoom})</p>
-                        <img src="\${imageUrl}" alt="Location Screenshot">
+                        <img src="\${data.imageUrl}" alt="Location Screenshot">
                     \`;
                 })
                 .catch(error => {
