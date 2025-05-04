@@ -2,8 +2,6 @@ version: '3.8'
 services:
   map-screenshot-service:
     build: .
-    ports:
-      - "3119:3119"
     env_file:
       - .env
     restart: unless-stopped
@@ -14,6 +12,4 @@ services:
     build:
       context: ./leaflet-map-viewer
       dockerfile: Dockerfile
-    ports:
-      - "3118:3118"
     restart: unless-stopped

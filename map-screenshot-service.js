@@ -343,7 +343,7 @@ app.get('/map-screenshot', async (req, res) => {
         await page.setViewport({ width: parseInt(width), height: parseInt(height) });
 
         // Navigate to OpenStreetMap with the provided coordinates
-        const mapUrl = `http://leaflet-map-viewer:3118/?zoom=${zoom}&lat=${lat}&lon=${lon}`;
+        const mapUrl = `http://leaflet-map-viewer:${process.env.MAP_PORT}/?zoom=${zoom}&lat=${lat}&lon=${lon}`;
         console.log("Navigating to:", mapUrl); // Log the URL for debugging
         await page.goto(mapUrl, { waitUntil: 'networkidle0' }); // Wait until network settles
 
