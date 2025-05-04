@@ -18,15 +18,10 @@ const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000;
 
 // Configure Puppeteer launch options
 const puppeteerOptions = {
-    executablePath: '/usr/bin/chromium-browser', // Specify system Chromium path
+    executablePath: '/usr/bin/chromium', // Specify system Chromium path
     headless: 'new',
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
 };
-
-// Add additional args if sandbox is disabled
-if (process.env.PUPPETEER_NO_SANDBOX === 'true') {
-    puppeteerOptions.args.push('--no-sandbox', '--disable-setuid-sandbox');
-}
 
 // Middleware to parse JSON bodies
 app.use(express.json());
