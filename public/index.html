@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,23 +12,29 @@
             margin: 0 auto;
             padding: 20px;
         }
+
         h1 {
             color: #333;
         }
+
         .input-group {
             margin-bottom: 15px;
         }
+
         label {
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
         }
-        input[type="text"], input[type="number"] {
+
+        input[type="text"],
+        input[type="number"] {
             width: 100%;
             padding: 8px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
+
         button {
             background-color: #4CAF50;
             color: white;
@@ -36,10 +43,12 @@
             border-radius: 4px;
             cursor: pointer;
         }
+
         .tabs {
             display: flex;
             margin-bottom: 20px;
         }
+
         .tab {
             padding: 10px 15px;
             cursor: pointer;
@@ -48,27 +57,33 @@
             border-bottom: none;
             border-radius: 4px 4px 0 0;
         }
+
         .tab.active {
             background-color: white;
             border-bottom: 1px solid white;
         }
+
         .tab-content {
             display: none;
             border: 1px solid #ddd;
             padding: 20px;
             border-radius: 0 4px 4px 4px;
         }
+
         .tab-content.active {
             display: block;
         }
+
         #result {
             margin-top: 20px;
             text-align: center;
         }
+
         img {
             max-width: 100%;
             border: 1px solid #ddd;
         }
+
         .loading {
             text-align: center;
             padding: 20px;
@@ -76,98 +91,101 @@
         }
     </style>
 </head>
+
 <body>
     <h1>OpenStreetMap Screenshot Service</h1>
-    
+
     <div class="tabs">
         <div class="tab active" onclick="switchTab('coordinates')">Search by Coordinates</div>
         <div class="tab" onclick="switchTab('location')">Search by Location</div>
     </div>
-    
+
     <div id="coordinates-tab" class="tab-content active">
         <div class="input-group">
             <label for="latitude">Latitude:</label>
             <input type="text" id="latitude" placeholder="e.g., 59.911491">
         </div>
-        
+
         <div class="input-group">
             <label for="longitude">Longitude:</label>
             <input type="text" id="longitude" placeholder="e.g., 10.757933">
         </div>
-        
+
         <div class="input-group">
             <label for="zoom">Zoom Level (1-19):</label>
             <input type="number" id="zoom" min="1" max="19" value="15">
         </div>
-        
+
         <button onclick="getMapScreenshot()">Get Screenshot</button>
     </div>
-    
+
     <div id="location-tab" class="tab-content">
         <div class="input-group">
             <label for="location">Location Query:</label>
             <input type="text" id="location" placeholder="e.g., Nedre Slottsgate, Oslo">
         </div>
-        
+
         <div class="input-group">
             <label for="location-zoom">Zoom Level (1-19):</label>
             <input type="number" id="location-zoom" min="1" max="19" value="15">
         </div>
-        
+
         <button onclick="getLocationScreenshot()">Get Screenshot</button>
     </div>
-    
+
     <div class="loading" id="loading">
         <p>Loading map screenshot...</p>
     </div>
-    
+
     <div id="result"></div>
-    
+
     <script>
         function switchTab(tabId) {
             // Hide all tab contents
             const tabContents = document.querySelectorAll('.tab-content');
             tabContents.forEach(content => content.classList.remove('active'));
-            
+
             // Deactivate all tabs
             const tabs = document.querySelectorAll('.tab');
             tabs.forEach(tab => tab.classList.remove('active'));
-            
+
             // Activate the selected tab
             document.getElementById(`${tabId}-tab`).classList.add('active');
             document.querySelector(`.tab:nth-child(${tabId === 'coordinates' ? 1 : 2})`).classList.add('active');
         }
-        
+
         function getMapScreenshot() {
             const lat = document.getElementById('latitude').value;
             const lon = document.getElementById('longitude').value;
             const zoom = document.getElementById('zoom').value;
-            
+
             if (!lat || !lon) {
                 alert('Please enter both latitude and longitude');
                 return;
             }
-            
+
             document.getElementById('loading').style.display = 'block';
             document.getElementById('result').innerHTML = '';
-            
+
             // Call to the backend service
             const url = `/map-screenshot?lat=${lat}&lon=${lon}&zoom=${zoom}`;
-            
+
             fetch(url)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
                     }
-                    return response.blob();
+                    return response.json();
                 })
-                .then(blob => {
+                .then(data => {
                     document.getElementById('loading').style.display = 'none';
-                    const imageUrl = URL.createObjectURL(blob);
+                    if (!data.imageUrl) {
+                        throw new Error('Image URL not found in response');
+                    }
                     document.getElementById('result').innerHTML = `
                         <h3>Map Screenshot</h3>
                         <p>Coordinates: ${lat}, ${lon} (Zoom: ${zoom})</p>
-                        <img src="${imageUrl}" alt="Map Screenshot">
+                        <img src="${data.imageUrl}" alt="Map Screenshot">
                     `;
                 })
                 .catch(error => {
@@ -178,22 +196,22 @@
                     `;
                 });
         }
-        
+
         function getLocationScreenshot() {
             const query = document.getElementById('location').value;
             const zoom = document.getElementById('location-zoom').value;
-            
+
             if (!query) {
                 alert('Please enter a location query');
                 return;
             }
-            
+
             document.getElementById('loading').style.display = 'block';
             document.getElementById('result').innerHTML = '';
-            
+
             // Call to the backend service
             const url = `/location-screenshot?query=${encodeURIComponent(query)}&zoom=${zoom}`;
-            
+
             fetch(url)
                 .then(response => {
                     if (!response.ok) {
@@ -220,4 +238,5 @@
         }
     </script>
 </body>
+
 </html>
