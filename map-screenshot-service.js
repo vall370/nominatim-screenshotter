@@ -48,6 +48,25 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 const supabaseBucket = 'map-screenshots';
 
+// --- Global Browser Instance ---
+let browser = null;
+
+async function initializeBrowser() {
+    try {
+        browser = await puppeteer.launch(puppeteerOptions);
+        console.log('Puppeteer browser initialized successfully.');
+        browser.on('disconnected', () => {
+            console.error('Puppeteer browser disconnected. Attempting to relaunch...');
+            // Optional: Implement retry logic here if needed
+            initializeBrowser(); // Relaunch on disconnect
+        });
+    } catch (error) {
+        console.error('Failed to launch Puppeteer browser:', error);
+        // Exit if the browser is critical and cannot be launched
+        process.exit(1);
+    }
+}
+
 // Log if Supabase is configured
 if (supabase) {
     console.log(`Supabase client initialized. Uploading to bucket: ${supabaseBucket}`);
@@ -323,6 +342,7 @@ if (!fs.existsSync(clientHtmlPath)) {
 
 // Route to handle map screenshot requests
 app.get('/map-screenshot', async (req, res) => {
+    let page = null; // Define page outside try block for finally clause
     try {
         // Get latitude and longitude from query parameters
         const { lat, lon, zoom = 15, width = 1200, height = 800 } = req.query;
@@ -332,10 +352,13 @@ app.get('/map-screenshot', async (req, res) => {
             return res.status(400).json({ error: 'Latitude and longitude parameters are required' });
         }
 
-        // Launch puppeteer
-        const browser = await puppeteer.launch(puppeteerOptions);
+        // Ensure browser is running
+        if (!browser || !browser.isConnected()) {
+            console.error('Browser not initialized or disconnected.');
+            return res.status(500).json({ error: 'Browser service unavailable' });
+        }
 
-        const page = await browser.newPage();
+        page = await browser.newPage();
 
         // Set request timeout
         await page.setDefaultNavigationTimeout(requestTimeout);
@@ -356,7 +379,8 @@ app.get('/map-screenshot', async (req, res) => {
         const screenshot = await page.screenshot({ type: 'png' });
 
         // Close browser
-        await browser.close();
+        await page.close();
+        page = null; // Mark page as closed
 
         // Check if Supabase is configured before attempting upload
         if (!supabase) {
@@ -398,12 +422,20 @@ app.get('/map-screenshot', async (req, res) => {
 
     } catch (error) {
         console.error('Error capturing map screenshot:', error);
+        if (page && !page.isClosed()) {
+            try {
+                await page.close(); // Ensure page is closed on error
+            } catch (closeError) {
+                console.error('Error closing page after failure:', closeError);
+            }
+        }
         res.status(500).json({ error: 'Failed to capture map screenshot', details: error.message });
     }
 });
 
 // Route to accept location query string instead of coordinates
 app.get('/location-screenshot', async (req, res) => {
+    let page = null; // Define page outside try block for finally clause
     try {
         // Get location query from parameters
         const { query, zoom = 15, width = 1200, height = 800 } = req.query;
@@ -413,7 +445,12 @@ app.get('/location-screenshot', async (req, res) => {
             return res.status(400).json({ error: 'Location query parameter is required' });
         }
 
-        let browser;
+        // Ensure browser is running
+        if (!browser || !browser.isConnected()) {
+            console.error('Browser not initialized or disconnected.');
+            return res.status(500).json({ error: 'Browser service unavailable' });
+        }
+
         try {
             // First, use Nominatim API to convert the query to coordinates
             const encodedQuery = encodeURIComponent(query);
@@ -435,8 +472,7 @@ app.get('/location-screenshot', async (req, res) => {
             console.log(`Found coordinates for "${query}": lat=${lat}, lon=${lon}`);
 
             // Now launch puppeteer to screenshot the internal viewer
-            browser = await puppeteer.launch(puppeteerOptions);
-            const page = await browser.newPage();
+            page = await browser.newPage();
 
             // Set request timeout
             await page.setDefaultNavigationTimeout(requestTimeout);
@@ -457,8 +493,8 @@ app.get('/location-screenshot', async (req, res) => {
             const screenshot = await page.screenshot({ type: 'png' });
 
             // Close browser
-            await browser.close();
-            browser = null; // Ensure browser is marked as closed
+            await page.close();
+            page = null; // Mark page as closed
 
             // Check if Supabase is configured before attempting upload
             if (!supabase) {
@@ -499,22 +535,30 @@ app.get('/location-screenshot', async (req, res) => {
             res.json({ imageUrl: urlData.publicUrl });
 
         } catch (error) {
-            console.error('Error capturing location screenshot:', error);
-            if (browser) {
+            console.error('Error processing location screenshot:', error);
+            if (page && !page.isClosed()) {
                 try {
-                    await browser.close(); // Attempt to close browser on error
+                    await page.close();
                 } catch (closeError) {
-                    console.error('Error closing browser after failure:', closeError);
+                    console.error('Error closing page after failure:', closeError);
                 }
             }
-            // Ensure response is sent within the catch block
             if (!res.headersSent) {
                 res.status(500).json({ error: 'Failed to capture location screenshot', message: error.message });
             }
         }
     } catch (error) {
-        console.error('Error capturing location screenshot:', error);
-        res.status(500).json({ error: 'Failed to capture location screenshot', message: error.message });
+        console.error('Error capturing location screenshot (outer):', error);
+        if (page && !page.isClosed()) {
+            try {
+                await page.close();
+            } catch (closeError) {
+                console.error('Error closing page after outer failure:', closeError);
+            }
+        }
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to capture location screenshot', message: error.message });
+        }
     }
 });
 
@@ -528,7 +572,34 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Start the server
-app.listen(port, () => {
-    console.log(`Map screenshot service running on port ${port}`);
+// --- Graceful Shutdown ---
+async function closeBrowser() {
+    if (browser) {
+        console.log('Closing Puppeteer browser...');
+        await browser.close();
+        browser = null;
+        console.log('Puppeteer browser closed.');
+    }
+}
+
+process.on('SIGINT', async () => {
+    console.log('Received SIGINT. Shutting down gracefully...');
+    await closeBrowser();
+    process.exit(0);
 });
+
+process.on('SIGTERM', async () => {
+    console.log('Received SIGTERM. Shutting down gracefully...');
+    await closeBrowser();
+    process.exit(0);
+});
+
+// Start the server and initialize browser
+async function startServer() {
+    await initializeBrowser(); // Initialize browser before starting server
+    app.listen(port, () => {
+        console.log(`Map screenshot service running on port ${port}`);
+    });
+}
+
+startServer(); // Call the async function to start
