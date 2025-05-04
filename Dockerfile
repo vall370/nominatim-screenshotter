@@ -16,8 +16,7 @@ RUN npm install puppeteer --no-install-recommends
 COPY . .
 
 # You can expose any port your app is configured to use, like 8080 for example
-EXPOSE 3118
-EXPOSE 3119
+EXPOSE 8080
 
 # Installing Chromium dependencies
 RUN apt-get update && apt-get install -y \
